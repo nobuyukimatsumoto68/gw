@@ -1,0 +1,58 @@
+#include "reweight.h"
+
+
+int main(int argc, char **argv) {
+  Grid_init(&argc, &argv);
+  int threads = GridThread::GetThreads();
+  std::cout << GridLogMessage << "Grid is setup to use " << threads << " threads" << std::endl;
+
+  GridCartesian         *UGrid   = SpaceTimeGrid::makeFourDimGrid(GridDefaultLatt(), GridDefaultSimd(Nd,vComplex::Nsimd()), GridDefaultMpi());
+
+  // -------------------------------------
+  // for reading data
+  const int conf_min=atoi(argv[1]);
+  const int conf_max=atoi(argv[2]);
+  // -----------------------
+
+  using Impl = PeriodicGimplR;
+
+  for(Real beta : betas){
+    std::cout << "beta = " << beta << std::endl;
+    WilsonGaugeActionR Waction(beta);
+
+    Obs obs;
+    obs.beta = beta;
+
+    obs.base_dir=base_dir;
+    obs.id=get_configname(beta, mass);
+
+    for(int conf=conf_min; conf<conf_max; conf+=interval){
+      std::string pathO = basedir+obs.id+obsinfo+std::to_string(conf)+".bin";
+      if( std::filesystem::exists( pathO ) ) continue;
+
+      char f[200];
+      std::string prefix = get_prefix(beta, mass);
+      std::sprintf(f,
+                   "%s.%d",
+                   prefix.data(), conf);
+
+      const std::string f_str = f;
+      const std::string path = obs.base_dir+obs.id+"/"+f_str;
+      std::cout << "path = " << path << std::endl;
+      FieldMetaData header;
+      LatticeGaugeField U(UGrid);
+      NerscIO::readConfiguration(U, header, path);
+      std::cout << "read. " << std::endl;
+
+      const ComplexD p    = WilsonLoops<Impl>::avgPolyakovLoop(U);
+      obs.O = abs(p);
+      const ComplexD S    = Waction.S(U);
+      obs.energy = real(S)/beta;
+
+      BinaryWriter WR( pathO );
+      write(WR, "obs", obs );
+    }
+  }
+
+  Grid_finalize();
+}

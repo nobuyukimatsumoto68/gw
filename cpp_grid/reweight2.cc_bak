@@ -1,0 +1,76 @@
+#include "reweight.h"
+
+
+// #define TEST
+// #undef _OPENMP
+
+
+int main(int argc, char **argv) {
+  Grid_init(&argc, &argv);
+
+
+  int threads = GridThread::GetThreads();
+  std::cout << GridLogMessage << "Grid is setup to use " << threads << " threads" << std::endl;
+
+  // -------------------------------------
+  // for reading data
+  // const Real mass=0.4;
+  // std::vector<Real> betas({10.98, 10.99, 11.00, 11.01, 11.02, 11.03, 11.04, 11.05, 11.06});
+  // std::vector<Real> betas({10.98, 10.99, 11.00});
+
+  const int nparam = betas.size();
+
+  std::vector<EnsembleOfObs> ensembles( nparam );
+
+#ifdef _OPENMP
+#pragma omp parallel for
+#endif
+  for(int j=0; j<nparam; j++){
+    const Real beta = betas[j];
+    char id[200];
+    std::sprintf(id,
+                 "beta%.2fm%.1f",
+                 beta, mass);
+
+    std::string id_str = id;
+    BinaryReader WR(basedir+id_str+obsinfo+".bin");
+    read(WR, "ens", ensembles[j] );
+  }
+
+
+  std::cout << GridLogMessage << "Ensembles Ready" << std::endl;
+
+  // -------------------
+  FreeEnergies fs(nparam);
+
+  std::vector<std::vector<RealD>> v_energies(nparam);
+  for(int k=0; k<nparam; k++){
+    v_energies[k] = ensembles[k].energies;
+  }
+
+  run_multihistogram( betas, v_energies, fs );
+
+  char id[200];
+  std::sprintf(id,
+               "m%.1f",
+               mass);
+  std::string id_str = id;
+
+  BinaryWriter WR(basedir+id_str+"fs.bin");
+  write(WR, "f", fs.f );
+
+  std::cout << "betas = " << std::endl;
+  for(int i=0; i<nparam; i++){
+    std::cout << betas[i] << " ";
+  }
+  std::cout << std::endl;
+
+
+  std::cout << GridLogMessage << "result = " << std::endl;
+  for(int i=0; i<nparam; i++) std::cout << fs[i] << " ";
+  std::cout << std::endl;
+
+
+
+  Grid_finalize();
+}
